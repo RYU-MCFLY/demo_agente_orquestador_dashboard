@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Consola de Operación — Orquestador Multiagente</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root{
+    --bg:#0B0E14;
+    --panel:#12161F;
+    --panel-2:#171C27;
+    --line:#242B38;
+    --text:#DDE3EC;
+    --text-dim:#7C879A;
+    --bronze:#C08552;
+    --silver:#9AA7B4;
+    --gold:#E8B93F;
+    --ok:#4EA699;
+    --alert:#E4572E;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .display{font-family:'Space Grotesk',sans-serif;}
+
+  .app{max-width:1400px;margin:0 auto;padding:28px 24px 60px;}
+
+  .topbar{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:22px;flex-wrap:wrap;gap:14px;}
+  .topbar h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;margin:0 0 4px;letter-spacing:-0.01em;}
+  .topbar p{margin:0;color:var(--text-dim);font-size:13px;}
+  .status-pill{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim);}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);}
+  .dot.idle{background:var(--text-dim);box-shadow:none;}
+  .dot.running{background:var(--gold);box-shadow:0 0 8px var(--gold);animation:pulse 1s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+
+  .layout{display:grid;grid-template-columns:280px 1fr 320px;gap:18px;}
+  @media (max-width:1080px){.layout{grid-template-columns:1fr;}}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;}
+  .panel h2{font-family:'Space Grotesk',sans-serif;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);margin:0 0 14px;}
+
+  /* Cola de tareas */
+  .task{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:13px;}
+  .task-head{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .task-name{font-weight:600;}
+  .task-agent{font-size:11px;color:var(--text-dim);margin-top:2px;}
+  .badge{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 7px;border-radius:20px;border:1px solid var(--line);color:var(--text-dim);}
+  .badge.queued{color:var(--text-dim);}
+  .badge.running{color:var(--gold);border-color:var(--gold);}
+  .badge.done{color:var(--ok);border-color:var(--ok);}
+
+  .run-all{width:100%;margin-top:10px;background:var(--gold);color:#1a1406;border:none;border-radius:8px;padding:11px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;cursor:pointer;letter-spacing:.02em;}
+  .run-all:hover{filter:brightness(1.08);}
+  .run-all:disabled{opacity:.5;cursor:not-allowed;}
+  .reset{width:100%;margin-top:8px;background:transparent;color:var(--text-dim);border:1px solid var(--line);border-radius:8px;padding:9px;font-size:12px;cursor:pointer;}
+  .reset:hover{color:var(--text);border-color:var(--text-dim);}
+
+  /* Pipeline medallion */
+  .pipeline{display:flex;gap:14px;position:relative;min-height:360px;}
+  .layer{flex:1;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px;position:relative;}
+  .layer-title{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;margin-bottom:4px;}
+  .swatch{width:10px;height:10px;border-radius:2px;}
+  .swatch.bronze{background:var(--bronze);}
+  .swatch.silver{background:var(--silver);}
+  .swatch.gold{background:var(--gold);}
+  .layer-sub{font-size:11px;color:var(--text-dim);margin-bottom:6px;}
+  .table-card{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);opacity:0;transform:translateY(6px);transition:all .45s ease;}
+  .table-card.show{opacity:1;transform:translateY(0);color:var(--text);}
+  .arrow{align-self:center;color:var(--text-dim);font-size:20px;}
+
+  .packet{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 10px var(--gold);opacity:0;pointer-events:none;}
+
+  /* KPIs */
+  .kpi-grid{display:grid;grid-template-columns:1fr;gap:10px;}
+  .kpi{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:12px;}
+  .kpi-label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;}
+  .kpi-value{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-top:2px;}
+  .kpi-value.alert{color:var(--alert);}
+  .kpi-value.ok{color:var(--ok);}
+  .kpi-value.gold{color:var(--gold);}
+  .kpi-foot{font-size:11px;color:var(--text-dim);margin-top:4px;}
+
+  .log{margin-top:18px;}
+  .log-entries{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-dim);max-height:150px;overflow-y:auto;line-height:1.7;}
+  .log-entries div span{color:var(--ok);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <h1>Consola de Operación — Orquestador Multiagente</h1>
+      <p>Retención de marca &amp; Optimización de infraestructura · arquitectura Medallion sobre OneLake (simulado)</p>
+    </div>
+    <div class="status-pill"><span class="dot idle" id="statusDot"></span><span id="statusText">Orquestador en espera</span></div>
+  </div>
+
+  <div class="layout">
+
+    <!-- Cola de tareas -->
+    <div class="panel">
+      <h2>Cola del orquestador</h2>
+      <div id="taskList"></div>
+      <button class="run-all" id="runAllBtn">▶ Ejecutar orquestador</button>
+      <button class="reset" id="resetBtn">↺ Reiniciar simulación</button>
+    </div>
+
+    <!-- Pipeline Medallion -->
+    <div class="panel">
+      <h2>Flujo de datos — Bronze → Silver → Gold</h2>
+      <div class="pipeline" id="pipeline">
+        <div class="layer">
+          <div class="layer-title"><span class="swatch bronze"></span>Bronze</div>
+          <div class="layer-sub">Silos crudos, sin transformar</div>
+          <div class="table-card" data-card="crm_silo">crm_silo.csv</div>
+          <div class="table-card" data-card="marketing_silo">marketing_silo.csv</div>
+          <div class="table-card" data-card="usage_silo">usage_silo.csv</div>
+          <div class="table-card" data-card="infra_metrics">infra_metrics.csv</div>
+          <div class="table-card" data-card="fsku_catalog">fsku_catalog.csv</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="layer">
+          <div class="layer-title"><span class="swatch silver"></span>Silver</div>
+          <div class="layer-sub">Silos unificados (customer 360)</div>
+          <div class="table-card" data-card="customer_360">customer_360.csv</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="layer">
+          <div class="layer-title"><span class="swatch gold"></span>Gold</div>
+          <div class="layer-sub">KPIs listos para negocio</div>
+          <div class="table-card" data-card="brand_health">brand_health.csv</div>
+          <div class="table-card" data-card="churn_risk_scores">churn_risk_scores.csv</div>
+          <div class="table-card" data-card="capacity_summary">capacity_summary.csv</div>
+          <div class="table-card" data-card="autoscaling_decisions">autoscaling_decisions.csv</div>
+          <div class="table-card" data-card="fsku_pause_plan">fsku_pause_plan.csv</div>
+        </div>
+        <div class="packet" id="packet"></div>
+      </div>
+
+      <div class="log">
+        <h2>Log de auditoría</h2>
+        <div class="log-entries" id="logEntries">
+          <div>· esperando ejecución...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="panel">
+      <h2>KPIs — Capa Gold</h2>
+      <div class="kpi-grid" id="kpiGrid">
+        <div class="kpi"><div class="kpi-label">Sentimiento de marca</div><div class="kpi-value" id="kpiSentiment">—</div><div class="kpi-foot" id="kpiSentimentFoot">Subagente: Retención</div></div>
+        <div class="kpi"><div class="kpi-label">Clientes en riesgo alto</div><div class="kpi-value" id="kpiRisk">—</div><div class="kpi-foot" id="kpiRiskFoot">MRR expuesto</div></div>
+        <div class="kpi"><div class="kpi-label">Utilización de capacidad</div><div class="kpi-value" id="kpiCap">—</div><div class="kpi-foot" id="kpiCapFoot">Subagente: Infraestructura</div></div>
+        <div class="kpi"><div class="kpi-label">F-SKUs recomendados a pausar</div><div class="kpi-value" id="kpiFsku">—</div><div class="kpi-foot" id="kpiFskuFoot">Ahorro estimado / semana</div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const tasks = [
+  {id:"t1", name:"eliminate_silos", agent:"Retención de marca", layer:"silver", cards:["customer_360"]},
+  {id:"t2", name:"analyze_brand", agent:"Retención de marca", layer:"gold", cards:["brand_health"]},
+  {id:"t3", name:"churn_risk_model", agent:"Retención de marca", layer:"gold", cards:["churn_risk_scores"]},
+  {id:"t4", name:"monitor_capacity", agent:"Infraestructura y costos", layer:"gold", cards:["capacity_summary"]},
+  {id:"t5", name:"autoscale_registrations", agent:"Infraestructura y costos", layer:"gold", cards:["autoscaling_decisions"]},
+  {id:"t6", name:"automate_fsku_pause", agent:"Infraestructura y costos", layer:"gold", cards:["fsku_pause_plan"]},
+];
+
+const taskListEl = document.getElementById("taskList");
+const logEl = document.getElementById("logEntries");
+const statusDot = document.getElementById("statusDot");
+const statusText = document.getElementById("statusText");
+const runAllBtn = document.getElementById("runAllBtn");
+const resetBtn = document.getElementById("resetBtn");
+const packet = document.getElementById("packet");
+
+function renderTasks(){
+  taskListEl.innerHTML = "";
+  tasks.forEach(t=>{
+    const div = document.createElement("div");
+    div.className = "task";
+    div.innerHTML = `
+      <div class="task-head">
+        <div>
+          <div class="task-name mono">${t.name}()</div>
+          <div class="task-agent">${t.agent}</div>
+        </div>
+        <span class="badge ${t.status||'queued'}" id="badge-${t.id}">${labelFor(t.status)}</span>
+      </div>`;
+    taskListEl.appendChild(div);
+  });
+}
+function labelFor(s){
+  if(s==="running") return "ejecutando";
+  if(s==="done") return "completado";
+  return "en cola";
+}
+
+function log(msg){
+  const line = document.createElement("div");
+  line.innerHTML = `· <span>[${new Date().toLocaleTimeString()}]</span> ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function rand(min,max){ return Math.random()*(max-min)+min; }
+
+// bronze cards se marcan como "presentes" desde el inicio (ingesta ya ocurrió)
+function seedBronze(){
+  ["crm_silo","marketing_silo","usage_silo","infra_metrics","fsku_catalog"].forEach(name=>{
+    document.querySelector(`[data-card="${name}"]`).classList.add("show");
+  });
+}
+
+async function movePacket(fromLayerIdx, toLayerIdx){
+  const layers = document.querySelectorAll(".layer");
+  const pipelineRect = document.getElementById("pipeline").getBoundingClientRect();
+  const fromRect = layers[fromLayerIdx].getBoundingClientRect();
+  const toRect = layers[toLayerIdx].getBoundingClientRect();
+  const startX = fromRect.left - pipelineRect.left + fromRect.width/2;
+  const endX = toRect.left - pipelineRect.left + toRect.width/2;
+  packet.style.left = startX + "px";
+  packet.style.opacity = "1";
+  await new Promise(r=>setTimeout(r, 30));
+  packet.style.transition = "left .5s ease";
+  packet.style.left = endX + "px";
+  await new Promise(r=>setTimeout(r, 550));
+  packet.style.opacity = "0";
+  packet.style.transition = "none";
+}
+
+function layerIndex(name){ return {bronze:0, silver:1, gold:2}[name]; }
+
+function computeKpis(){
+  // Réplica simplificada, en el navegador, de la lógica del notebook (con datos simulados)
+  const sentiment = rand(-0.1, 0.35);
+  const negPct = rand(20, 40);
+  document.getElementById("kpiSentiment").textContent = sentiment.toFixed(2);
+  document.getElementById("kpiSentiment").className = "kpi-value " + (sentiment < 0 ? "alert" : "ok");
+  document.getElementById("kpiSentimentFoot").textContent = `${negPct.toFixed(1)}% de menciones con sentimiento negativo`;
+
+  const riskCustomers = Math.round(rand(15, 35));
+  const mrrRisk = rand(2000, 4500);
+  document.getElementById("kpiRisk").textContent = riskCustomers;
+  document.getElementById("kpiRisk").className = "kpi-value alert";
+  document.getElementById("kpiRiskFoot").textContent = `$${mrrRisk.toFixed(0)} MRR expuesto`;
+
+  const cap = rand(35, 55);
+  document.getElementById("kpiCap").textContent = cap.toFixed(1) + "%";
+  document.getElementById("kpiCap").className = "kpi-value " + (cap > 75 ? "alert" : "ok");
+  document.getElementById("kpiCapFoot").textContent = "promedio últimas 168h";
+
+  const idleRatio = rand(12, 26);
+  const pausing = idleRatio > 15;
+  const savings = pausing ? rand(180, 320) : 0;
+  document.getElementById("kpiFsku").textContent = pausing ? "F8, F16" : "ninguno";
+  document.getElementById("kpiFsku").className = "kpi-value " + (pausing ? "gold" : "ok");
+  document.getElementById("kpiFskuFoot").textContent = pausing ? `$${savings.toFixed(0)} USD/semana estimados` : "capacidad óptima, sin acción";
+}
+
+async function runOrchestrator(){
+  runAllBtn.disabled = true;
+  statusDot.className = "dot running";
+  statusText.textContent = "Orquestador ejecutando tareas...";
+  log("Orquestador: iniciando cola de 6 tareas (2 subagentes)");
+
+  for(const t of tasks){
+    t.status = "running";
+    document.getElementById(`badge-${t.id}`).className = "badge running";
+    document.getElementById(`badge-${t.id}`).textContent = "ejecutando";
+    log(`${t.agent} → ejecutando <b>${t.name}()</b>`);
+
+    const dest = layerIndex(t.layer);
+    await movePacket(0, dest);
+
+    t.cards.forEach(c=>{
+      const el = document.querySelector(`[data-card="${c}"]`);
+      if(el) el.classList.add("show");
+    });
+
+    await new Promise(r=>setTimeout(r, 150));
+    t.status = "done";
+    document.getElementById(`badge-${t.id}`).className = "badge done";
+    document.getElementById(`badge-${t.id}`).textContent = "completado";
+    log(`${t.name}() → OK, resultado persistido en <b>${t.layer}</b>`);
+  }
+
+  computeKpis();
+  statusDot.className = "dot";
+  statusText.textContent = "Orquestador: ciclo completado";
+  log("Orquestador: ciclo completo. Auditoría escrita en gold/orchestrator_audit_log");
+  runAllBtn.disabled = false;
+}
+
+function resetAll(){
+  tasks.forEach(t=> t.status="queued");
+  renderTasks();
+  document.querySelectorAll(".table-card").forEach(el=>el.classList.remove("show"));
+  seedBronze();
+  logEl.innerHTML = "<div>· esperando ejecución...</div>";
+  statusDot.className = "dot idle";
+  statusText.textContent = "Orquestador en espera";
+  ["kpiSentiment","kpiRisk","kpiCap","kpiFsku"].forEach(id=>{
+    document.getElementById(id).textContent = "—";
+    document.getElementById(id).className = "kpi-value";
+  });
+  document.getElementById("kpiSentimentFoot").textContent = "Subagente: Retención";
+  document.getElementById("kpiRiskFoot").textContent = "MRR expuesto";
+  document.getElementById("kpiCapFoot").textContent = "Subagente: Infraestructura";
+  document.getElementById("kpiFskuFoot").textContent = "Ahorro estimado / semana";
+}
+
+renderTasks();
+seedBronze();
+runAllBtn.addEventListener("click", runOrchestrator);
+resetBtn.addEventListener("click", resetAll);
+</script>
+</body>
+</html>
