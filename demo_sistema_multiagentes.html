@@ -1,0 +1,638 @@
+<title>Aaron Arellano — Portfolio con Agente IA (Demo)</title>
+<meta name="description" content="Demo autocontenida de un sistema multi-agente (orquestador + RAG + contacto + analista de datos) embebido en una página de portfolio." />
+<style>
+  :root {
+    --surface-1: #fcfcfb;
+    --page-plane: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --gridline: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border-ring: rgba(11,11,11,0.10);
+    --series-1: #2a78d6;
+    --series-1-soft: #cde2fb;
+    --accent-ink: #ffffff;
+    --good: #0ca30c;
+    --bubble-shadow: 0 10px 30px rgba(11,11,11,0.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface-1: #1a1a19;
+      --page-plane: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --gridline: #2c2c2a;
+      --baseline: #383835;
+      --border-ring: rgba(255,255,255,0.10);
+      --series-1: #3987e5;
+      --series-1-soft: #16324f;
+      --accent-ink: #ffffff;
+      --good: #0ca30c;
+      --bubble-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --surface-1: #1a1a19; --page-plane: #0d0d0d; --text-primary: #ffffff;
+    --text-secondary: #c3c2b7; --text-muted: #898781; --gridline: #2c2c2a;
+    --baseline: #383835; --border-ring: rgba(255,255,255,0.10);
+    --series-1: #3987e5; --series-1-soft: #16324f;
+  }
+  :root[data-theme="light"] {
+    --surface-1: #fcfcfb; --page-plane: #f9f9f7; --text-primary: #0b0b0b;
+    --text-secondary: #52514e; --text-muted: #898781; --gridline: #e1e0d9;
+    --baseline: #c3c2b7; --border-ring: rgba(11,11,11,0.10);
+    --series-1: #2a78d6; --series-1-soft: #cde2fb;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page-plane);
+    color: var(--text-primary);
+  }
+
+  /* ---------- Página de portfolio (contexto mínimo) ---------- */
+  .hero {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 64px 24px 120px;
+  }
+  .hero .eyebrow {
+    color: var(--series-1);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .hero h1 { font-size: 2.1rem; margin: 10px 0 6px; }
+  .hero p.lead { color: var(--text-secondary); font-size: 1.05rem; line-height: 1.6; max-width: 60ch; }
+  .hero .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 14px; margin-top: 32px; }
+  .hero .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border-ring);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .hero .card h3 { margin: 0 0 6px; font-size: 0.95rem; }
+  .hero .card p { margin: 0; color: var(--text-secondary); font-size: 0.85rem; line-height: 1.5; }
+  .hero .repo-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 28px; font-size: 0.85rem; color: var(--text-secondary);
+    text-decoration: none; border-bottom: 1px dashed var(--baseline);
+    padding-bottom: 2px;
+  }
+  .hero .repo-link:hover { color: var(--series-1); border-color: var(--series-1); }
+
+  /* ---------- Burbuja flotante ---------- */
+  #agent-bubble {
+    position: fixed; right: 22px; bottom: 22px;
+    width: 58px; height: 58px; border-radius: 50%;
+    background: var(--series-1); color: #fff;
+    border: none; cursor: pointer;
+    box-shadow: var(--bubble-shadow);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; z-index: 1000;
+    transition: transform .15s ease;
+  }
+  #agent-bubble:hover { transform: scale(1.06); }
+  #agent-bubble .dot {
+    position: absolute; top: 2px; right: 2px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--good); border: 2px solid var(--surface-1);
+  }
+
+  /* ---------- Ventana de chat ---------- */
+  #agent-window {
+    position: fixed; right: 22px; bottom: 92px;
+    width: 360px; max-width: calc(100vw - 32px);
+    height: 520px; max-height: calc(100vh - 140px);
+    background: var(--surface-1);
+    border-radius: 16px;
+    box-shadow: var(--bubble-shadow);
+    border: 1px solid var(--border-ring);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 1000;
+  }
+  #agent-window.open { display: flex; }
+
+  .agent-header {
+    background: var(--series-1); color: #fff;
+    padding: 14px 16px; flex: 0 0 auto;
+  }
+  .agent-header .row { display: flex; align-items: center; justify-content: space-between; }
+  .agent-header h2 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+  .agent-header .sub { font-size: 0.72rem; opacity: 0.9; margin-top: 2px; }
+  .agent-header a.repo {
+    color: #fff; opacity: 0.85; font-size: 0.7rem; text-decoration: none;
+    border-bottom: 1px solid rgba(255,255,255,0.5);
+  }
+  .agent-header a.repo:hover { opacity: 1; }
+  .agent-header button.close {
+    background: transparent; border: none; color: #fff; font-size: 18px;
+    cursor: pointer; line-height: 1; opacity: 0.85;
+  }
+  .agent-header button.close:hover { opacity: 1; }
+
+  .agent-body {
+    flex: 1 1 auto; overflow-y: auto; padding: 14px;
+    display: flex; flex-direction: column; gap: 10px;
+    font-size: 0.86rem;
+  }
+  .msg { display: flex; flex-direction: column; max-width: 88%; }
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.assistant { align-self: flex-start; align-items: flex-start; }
+  .msg .bubble {
+    padding: 9px 12px; border-radius: 12px; line-height: 1.45;
+    white-space: pre-wrap;
+  }
+  .msg.user .bubble { background: var(--series-1); color: #fff; border-bottom-right-radius: 3px; }
+  .msg.assistant .bubble { background: var(--page-plane); color: var(--text-primary); border: 1px solid var(--border-ring); border-bottom-left-radius: 3px; }
+  .msg .route-tag {
+    font-size: 0.68rem; color: var(--text-muted);
+    margin-bottom: 3px; display: flex; align-items: center; gap: 4px;
+  }
+  .typing { display: inline-flex; gap: 3px; align-items: center; padding: 9px 12px; }
+  .typing span {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted);
+    animation: blink 1.2s infinite ease-in-out;
+  }
+  .typing span:nth-child(2) { animation-delay: .2s; }
+  .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+
+  .agent-suggestions {
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px;
+    flex: 0 0 auto;
+  }
+  .chip {
+    font-size: 0.72rem; background: var(--series-1-soft); color: var(--series-1);
+    border: none; border-radius: 999px; padding: 6px 10px; cursor: pointer;
+  }
+  .chip:hover { filter: brightness(0.97); }
+
+  .agent-gdpr {
+    font-size: 0.66rem; color: var(--text-muted); padding: 0 14px 8px;
+    flex: 0 0 auto; line-height: 1.4;
+  }
+
+  .agent-input {
+    display: flex; gap: 8px; padding: 10px 12px 12px;
+    border-top: 1px solid var(--gridline); flex: 0 0 auto;
+    align-items: center;
+  }
+  .agent-input input[type="text"] {
+    flex: 1; border: 1px solid var(--gridline); border-radius: 10px;
+    padding: 9px 10px; font-size: 0.85rem; background: var(--surface-1); color: var(--text-primary);
+  }
+  .agent-input input[type="text"]:focus { outline: 2px solid var(--series-1); outline-offset: 1px; }
+  .agent-input button.send, .agent-input label.upload {
+    border: none; background: var(--series-1); color: #fff; border-radius: 10px;
+    width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 16px; flex: 0 0 auto;
+  }
+  .agent-input label.upload { background: var(--page-plane); color: var(--series-1); border: 1px solid var(--gridline); }
+  .agent-input input[type="file"] { display: none; }
+
+  /* ---------- Mini gráfico SVG (informe del analista de datos) ---------- */
+  .chart-wrap { margin-top: 6px; background: var(--surface-1); border: 1px solid var(--border-ring); border-radius: 10px; padding: 8px 10px 4px; }
+  .chart-title { font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 4px; }
+  .bar-rect { fill: var(--series-1); cursor: pointer; }
+  .bar-rect:hover { fill: var(--series-1); filter: brightness(1.12); }
+  .bar-label { font-size: 9px; fill: var(--text-secondary); }
+  .bar-value { font-size: 9px; fill: var(--text-primary); font-weight: 600; }
+  .axis-line { stroke: var(--baseline); stroke-width: 1; }
+  .grid-line { stroke: var(--gridline); stroke-width: 1; }
+  .bar-tooltip {
+    position: absolute; pointer-events: none; background: var(--text-primary); color: var(--surface-1);
+    font-size: 10px; padding: 3px 6px; border-radius: 6px; opacity: 0; transition: opacity .1s;
+    transform: translate(-50%, -100%);
+  }
+</style>
+
+<!-- ============================================================ -->
+<!-- Página de portfolio de ejemplo (contexto mínimo para la demo) -->
+<!-- ============================================================ -->
+<div class="hero">
+  <div class="eyebrow">Portfolio · Demo técnica</div>
+  <h1>Aaron Arellano</h1>
+  <p class="lead">
+    Ingeniero de datos e IA. Esta página incluye un <strong>asistente conversacional
+    multi-agente</strong> (burbuja inferior derecha) que demuestra, en vivo, un
+    patrón de orquestador + subagentes especializados: RAG sobre mi trayectoria,
+    captura de contacto y análisis automático de datos.
+  </p>
+  <div class="cards">
+    <div class="card">
+      <h3>🔎 Experto en Trayectoria</h3>
+      <p>RAG sobre mi CV y proyectos. Pregúntale por mi experiencia con Databricks, Spark o IA.</p>
+    </div>
+    <div class="card">
+      <h3>✉️ Gestor de Contacto</h3>
+      <p>Captura tus datos y los envía a Airtable/Sheets (simulado en esta demo).</p>
+    </div>
+    <div class="card">
+      <h3>📊 Analista de Datos</h3>
+      <p>Sube un CSV o usa el de ejemplo y recibe un informe automático con gráfico.</p>
+    </div>
+  </div>
+  <a class="repo-link" href="https://github.com/ryu-mcfly/databricks-bootcamp-test/tree/main/portfolio-agent-demo" target="_blank" rel="noopener">
+    &lt;/&gt; Ver arquitectura completa en GitHub (notebook + código)
+  </a>
+</div>
+
+<!-- ============================================================ -->
+<!-- Widget flotante -->
+<!-- ============================================================ -->
+<button id="agent-bubble" aria-label="Abrir asistente">
+  💬<span class="dot"></span>
+</button>
+
+<div id="agent-window" role="dialog" aria-label="Asistente multi-agente">
+  <div class="agent-header">
+    <div class="row">
+      <div>
+        <h2>Asistente de Aaron</h2>
+        <div class="sub">Orquestador + 3 subagentes · demo en vivo</div>
+      </div>
+      <button class="close" id="agent-close" aria-label="Cerrar">✕</button>
+    </div>
+    <a class="repo" href="https://github.com/ryu-mcfly/databricks-bootcamp-test/tree/main/portfolio-agent-demo" target="_blank" rel="noopener">
+      &lt;/&gt; Ver arquitectura en GitHub
+    </a>
+  </div>
+
+  <div class="agent-body" id="agent-body"></div>
+
+  <div class="agent-suggestions" id="agent-suggestions">
+    <button class="chip" data-msg="¿Qué experiencia tienes con Databricks y Spark?">Su experiencia técnica</button>
+    <button class="chip" data-msg="Quiero contactar contigo, mi email es laura@empresa.com">Dejar contacto</button>
+    <button class="chip" data-msg="Analiza estos datos de ejemplo">Analizar datos de ejemplo</button>
+  </div>
+
+  <div class="agent-gdpr">
+    🔒 Estás interactuando con un asistente de IA, no con una persona. Los datos de
+    contacto que compartas se usan solo para responder tu consulta (RGPD) y puedes
+    solicitar su borrado en cualquier momento.
+  </div>
+
+  <div class="agent-input">
+    <label class="upload" title="Subir CSV para el Analista de Datos">
+      📎
+      <input type="file" id="agent-file" accept=".csv" />
+    </label>
+    <input type="text" id="agent-text" placeholder="Escribe tu mensaje…" />
+    <button class="send" id="agent-send" aria-label="Enviar">➤</button>
+  </div>
+</div>
+
+<div class="bar-tooltip" id="bar-tooltip"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------
+   * 1. Base de conocimiento (equivalente al RAG del notebook)
+   * ---------------------------------------------------------- */
+  var KNOWLEDGE_BASE = [
+    { titulo: "Experiencia — Ingeniería de Datos",
+      texto: "Aaron ha trabajado como ingeniero de datos diseñando pipelines ETL con Databricks Spark y Delta Lake para procesar datos a escala construyendo arquitecturas medallion bronze silver gold optimizando jobs de Spark y orquestando flujos con Airflow" },
+    { titulo: "Experiencia — Inteligencia Artificial y Agentes",
+      texto: "Ha diseñado sistemas multi agente con LLMs GPT-4o-mini modelos de Groq aplicando patrones de orquestador y subagentes especializados RAG sobre bases vectoriales memoria conversacional y tool calling para automatizar tareas" },
+    { titulo: "Proyecto — Asistente de portfolio multi-agente",
+      texto: "Chatbot con arquitectura multi agente embebido en la web personal con un subagente RAG para responder sobre la trayectoria profesional un subagente de contacto que guarda leads en Airtable y un subagente analista que genera reportes a partir de CSV" },
+    { titulo: "Proyecto — Bootcamp de Databricks",
+      texto: "Practicas y ejercicios de bootcamp centrados en Databricks notebooks Delta Lake control de acceso con Unity Catalog y buenas practicas de ingenieria de datos en la nube" },
+    { titulo: "Habilidades técnicas",
+      texto: "Python SQL PySpark Databricks Delta Lake Airflow LLMs OpenAI Groq arquitecturas RAG bases de datos vectoriales Supabase pgvector Docker despliegue en Hugging Face Spaces y Streamlit" },
+    { titulo: "Formación",
+      texto: "Formacion continua en ingenieria de datos y en el ecosistema de agentes de IA diseño de sistemas multi agente tool calling guardrails y cumplimiento normativo RGPD" }
+  ];
+  var RAG_THRESHOLD = 0.08;
+
+  var SAMPLE_CSV_ROWS = [
+    { mes: "Enero", usuarios_activos: 120, coste_eur: 300, conversion_pct: 2.1 },
+    { mes: "Febrero", usuarios_activos: 180, coste_eur: 340, conversion_pct: 2.4 },
+    { mes: "Marzo", usuarios_activos: 260, coste_eur: 410, conversion_pct: 3.0 },
+    { mes: "Abril", usuarios_activos: 300, coste_eur: 430, conversion_pct: 3.4 }
+  ];
+
+  /* ------------------------------------------------------------
+   * 2. Utilidades de texto / similitud (mismo mecanismo que el notebook)
+   * ---------------------------------------------------------- */
+  function tokenize(text) {
+    return (text.toLowerCase().match(/[a-záéíóúñü0-9]+/g) || []);
+  }
+  function termFreq(tokens) {
+    var map = {};
+    tokens.forEach(function (t) { map[t] = (map[t] || 0) + 1; });
+    return map;
+  }
+  function cosineSim(a, b) {
+    var dot = 0, na = 0, nb = 0, k;
+    for (k in a) { na += a[k] * a[k]; if (b[k]) dot += a[k] * b[k]; }
+    for (k in b) { nb += b[k] * b[k]; }
+    if (na === 0 || nb === 0) return 0;
+    return dot / (Math.sqrt(na) * Math.sqrt(nb));
+  }
+  var KB_VECTORS = KNOWLEDGE_BASE.map(function (doc) { return termFreq(tokenize(doc.texto)); });
+
+  function ragSearch(query, k) {
+    var qVec = termFreq(tokenize(query));
+    var scored = KNOWLEDGE_BASE.map(function (doc, i) {
+      return { doc: doc, score: cosineSim(qVec, KB_VECTORS[i]) };
+    });
+    scored.sort(function (a, b) { return b.score - a.score; });
+    return scored.slice(0, k || 2);
+  }
+
+  /* ------------------------------------------------------------
+   * 3. Orquestador: clasificación de intención por palabras clave
+   * ---------------------------------------------------------- */
+  var INTENT_KEYWORDS = {
+    rag: ["experiencia", "proyecto", "cv", "trayectoria", "habilidad", "habilidades", "formacion", "formación", "trabajo", "tecnica", "técnica"],
+    contacto: ["contacto", "contactar", "presupuesto", "email", "correo", "colaborar", "contratar"],
+    datos: ["csv", "excel", "datos", "analiza", "analizar", "archivo", "informe", "ejemplo"]
+  };
+  var EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+
+  function classifyIntent(message) {
+    var lower = message.toLowerCase();
+    var best = "desconocido", bestScore = 0;
+    Object.keys(INTENT_KEYWORDS).forEach(function (intent) {
+      var score = INTENT_KEYWORDS[intent].filter(function (kw) { return lower.indexOf(kw) !== -1; }).length;
+      if (score > bestScore) { bestScore = score; best = intent; }
+    });
+    return bestScore > 0 ? best : "desconocido";
+  }
+
+  /* ------------------------------------------------------------
+   * 4. Subagentes
+   * ---------------------------------------------------------- */
+  function runRagAgent(message) {
+    var results = ragSearch(message, 2);
+    var best = results[0] ? results[0].score : 0;
+    if (best < RAG_THRESHOLD) {
+      return {
+        agent: "Experto en Trayectoria (RAG)",
+        reply: "No tengo información suficiente sobre eso en mi documentación. ¿Quieres que te ponga en contacto directamente con Aaron?"
+      };
+    }
+    var lines = results.filter(function (r) { return r.score > 0; }).map(function (r) { return "• " + r.doc.titulo + ": " + r.doc.texto.slice(0, 110) + "…"; });
+    return {
+      agent: "Experto en Trayectoria (RAG)",
+      reply: "Según su documentación:\n" + lines.join("\n")
+    };
+  }
+
+  function runContactAgent(message) {
+    var match = message.match(EMAIL_RE);
+    if (!match) {
+      return {
+        agent: "Gestor de Contacto",
+        reply: "Para ponerte en contacto con Aaron necesito, al menos, tu email. ¿Me lo compartes? (Al enviarlo aceptas que se use únicamente para responder a tu consulta, conforme al RGPD)."
+      };
+    }
+    var email = match[0];
+    var contacts = JSON.parse(localStorage.getItem("demo_contacts") || "[]");
+    contacts.push({ email: email, mensaje: message, capturado_en: new Date().toISOString() });
+    localStorage.setItem("demo_contacts", JSON.stringify(contacts));
+    // Producción: POST a un webhook de n8n / API de Airtable o Google Sheets.
+    return {
+      agent: "Gestor de Contacto",
+      reply: "¡Gracias! He registrado tu contacto (" + email + ") y Aaron te responderá en breve. Tus datos se guardan únicamente con este fin, conforme al RGPD, y puedes solicitar su borrado en cualquier momento."
+    };
+  }
+
+  function analyzeRows(rows) {
+    if (!rows.length) return { error: "El archivo no contiene filas." };
+    var columns = Object.keys(rows[0]);
+    var stats = {};
+    columns.forEach(function (col) {
+      var values = rows.map(function (r) { return parseFloat(r[col]); });
+      var allNumeric = values.every(function (v) { return !isNaN(v); });
+      if (allNumeric) {
+        var sum = values.reduce(function (a, b) { return a + b; }, 0);
+        stats[col] = { min: Math.min.apply(null, values), max: Math.max.apply(null, values), media: sum / values.length, values: values };
+      }
+    });
+    var insights = ["El archivo tiene " + rows.length + " filas y " + columns.length + " columnas."];
+    Object.keys(stats).forEach(function (col) {
+      var s = stats[col];
+      insights.push("'" + col + "': media " + s.media.toFixed(2) + " (mín " + s.min.toFixed(2) + ", máx " + s.max.toFixed(2) + ").");
+    });
+    return { rows: rows, columns: columns, stats: stats, insights: insights };
+  }
+
+  function runDataAgent(rows) {
+    var result = analyzeRows(rows);
+    if (result.error) return { agent: "Analista de Datos", reply: "No he podido analizar el archivo: " + result.error };
+    return { agent: "Analista de Datos", reply: "Informe automático del archivo:\n" + result.insights.map(function (l) { return "• " + l; }).join("\n"), chart: buildChart(result) };
+  }
+
+  /* ------------------------------------------------------------
+   * 5. Mini gráfico de barras en SVG (magnitud por categoría)
+   * ---------------------------------------------------------- */
+  function roundedTopRectPath(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h);
+    return "M" + x + "," + (y + h) +
+      "L" + x + "," + (y + r) +
+      "Q" + x + "," + y + " " + (x + r) + "," + y +
+      "L" + (x + w - r) + "," + y +
+      "Q" + (x + w) + "," + y + " " + (x + w) + "," + (y + r) +
+      "L" + (x + w) + "," + (y + h) + "Z";
+  }
+
+  function buildChart(result) {
+    // Elige la primera columna categórica (no numérica) como eje X, y la primera numérica como serie.
+    var catCol = result.columns.find(function (c) { return !result.stats[c]; });
+    var numCol = Object.keys(result.stats)[0];
+    if (!catCol || !numCol) return null;
+
+    var labels = result.rows.map(function (r) { return r[catCol]; });
+    var values = result.stats[numCol].values;
+    var max = Math.max.apply(null, values) * 1.15;
+
+    var width = 300, height = 130, padding = { top: 10, right: 8, bottom: 20, left: 8 };
+    var plotW = width - padding.left - padding.right;
+    var plotH = height - padding.top - padding.bottom;
+    var gap = 10;
+    var barW = (plotW - gap * (values.length - 1)) / values.length;
+
+    var bars = "", labelsSvg = "";
+    values.forEach(function (v, i) {
+      var barH = (v / max) * plotH;
+      var x = padding.left + i * (barW + gap);
+      var y = padding.top + (plotH - barH);
+      bars += '<path class="bar-rect" d="' + roundedTopRectPath(x, y, barW, barH, 4) +
+        '" data-label="' + labels[i] + '" data-value="' + v + '"></path>';
+      labelsSvg += '<text class="bar-label" x="' + (x + barW / 2) + '" y="' + (height - 6) + '" text-anchor="middle">' + labels[i] + '</text>';
+      labelsSvg += '<text class="bar-value" x="' + (x + barW / 2) + '" y="' + (y - 4) + '" text-anchor="middle">' + v + '</text>';
+    });
+
+    var baseline = '<line class="axis-line" x1="' + padding.left + '" y1="' + (padding.top + plotH) + '" x2="' + (width - padding.right) + '" y2="' + (padding.top + plotH) + '"></line>';
+    var grid = '<line class="grid-line" x1="' + padding.left + '" y1="' + padding.top + '" x2="' + (width - padding.right) + '" y2="' + padding.top + '"></line>';
+
+    var svg = '<svg viewBox="0 0 ' + width + ' ' + height + '" width="100%" height="' + height + '" role="img" aria-label="Gráfico de ' + numCol + ' por ' + catCol + '">' +
+      grid + baseline + bars + labelsSvg + '</svg>';
+
+    return { svg: svg, title: numCol + " por " + catCol };
+  }
+
+  /* ------------------------------------------------------------
+   * 6. Orquestador
+   * ---------------------------------------------------------- */
+  function handleMessage(message, uploadedRows) {
+    try {
+      var intent = classifyIntent(message);
+      if (intent === "datos") {
+        return runDataAgent(uploadedRows || SAMPLE_CSV_ROWS);
+      }
+      if (intent === "contacto") {
+        return runContactAgent(message);
+      }
+      if (intent === "rag") {
+        return runRagAgent(message);
+      }
+      return {
+        agent: null,
+        reply: "No estoy seguro de a qué subagente corresponde tu mensaje. ¿Quieres preguntar por mi trayectoria, dejar tus datos de contacto o analizar un CSV de ejemplo?"
+      };
+    } catch (err) {
+      return { agent: "Error", reply: "Ha ocurrido un error procesando tu mensaje. Inténtalo de nuevo, por favor." };
+    }
+  }
+
+  /* ------------------------------------------------------------
+   * 7. UI: burbuja, ventana, render de mensajes
+   * ---------------------------------------------------------- */
+  var bubble = document.getElementById("agent-bubble");
+  var win = document.getElementById("agent-window");
+  var body = document.getElementById("agent-body");
+  var input = document.getElementById("agent-text");
+  var sendBtn = document.getElementById("agent-send");
+  var fileInput = document.getElementById("agent-file");
+  var tooltip = document.getElementById("bar-tooltip");
+  var pendingRows = null;
+
+  function scrollToBottom() { body.scrollTop = body.scrollHeight; }
+
+  function addUserMessage(text) {
+    var el = document.createElement("div");
+    el.className = "msg user";
+    el.innerHTML = '<div class="bubble"></div>';
+    el.querySelector(".bubble").textContent = text;
+    body.appendChild(el);
+    scrollToBottom();
+  }
+
+  function addTypingIndicator() {
+    var el = document.createElement("div");
+    el.className = "msg assistant";
+    el.id = "typing-indicator";
+    el.innerHTML = '<div class="bubble typing"><span></span><span></span><span></span></div>';
+    body.appendChild(el);
+    scrollToBottom();
+    return el;
+  }
+
+  function addAssistantMessage(result) {
+    var el = document.createElement("div");
+    el.className = "msg assistant";
+    var tagHtml = result.agent ? '<div class="route-tag">🧭 Subagente invocado: <strong>' + result.agent + "</strong></div>" : "";
+    var chartHtml = "";
+    if (result.chart) {
+      chartHtml = '<div class="chart-wrap"><div class="chart-title">' + result.chart.title + '</div>' + result.chart.svg + "</div>";
+    }
+    el.innerHTML = tagHtml + '<div class="bubble"></div>' + chartHtml;
+    el.querySelector(".bubble").textContent = result.reply;
+    body.appendChild(el);
+    wireChartTooltips(el);
+    scrollToBottom();
+  }
+
+  function wireChartTooltips(container) {
+    var bars = container.querySelectorAll(".bar-rect");
+    bars.forEach(function (bar) {
+      bar.addEventListener("mousemove", function (ev) {
+        tooltip.textContent = bar.getAttribute("data-label") + ": " + bar.getAttribute("data-value");
+        tooltip.style.left = ev.clientX + "px";
+        tooltip.style.top = (ev.clientY - 6) + "px";
+        tooltip.style.opacity = "1";
+      });
+      bar.addEventListener("mouseleave", function () { tooltip.style.opacity = "0"; });
+    });
+  }
+
+  function respondTo(text, rows) {
+    addUserMessage(text);
+    input.value = "";
+    var indicator = addTypingIndicator();
+    window.setTimeout(function () {
+      indicator.remove();
+      var result = handleMessage(text, rows);
+      addAssistantMessage(result);
+    }, 550);
+  }
+
+  sendBtn.addEventListener("click", function () {
+    var text = input.value.trim();
+    if (!text) return;
+    respondTo(text, pendingRows);
+    pendingRows = null;
+  });
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") sendBtn.click();
+  });
+
+  document.getElementById("agent-suggestions").addEventListener("click", function (e) {
+    var btn = e.target.closest(".chip");
+    if (!btn) return;
+    respondTo(btn.getAttribute("data-msg"), null);
+  });
+
+  /* --- Subida de CSV (parser simple, sin dependencias) --- */
+  function parseCsv(text) {
+    var lines = text.trim().split(/\r?\n/);
+    var headers = lines[0].split(",").map(function (h) { return h.trim(); });
+    return lines.slice(1).filter(Boolean).map(function (line) {
+      var cells = line.split(",");
+      var row = {};
+      headers.forEach(function (h, i) { row[h] = (cells[i] || "").trim(); });
+      return row;
+    });
+  }
+
+  fileInput.addEventListener("change", function () {
+    var file = fileInput.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      pendingRows = parseCsv(String(reader.result));
+      respondTo("He subido " + file.name + ", ¿puedes analizarlo?", pendingRows);
+      pendingRows = null;
+    };
+    reader.readAsText(file);
+  });
+
+  /* --- Apertura / cierre del widget + mensaje de bienvenida --- */
+  var welcomed = false;
+  function openWindow() {
+    win.classList.add("open");
+    if (!welcomed) {
+      welcomed = true;
+      addAssistantMessage({
+        agent: null,
+        reply: "¡Hola! Soy el asistente del portfolio de Aaron 🤖. Estás hablando con una IA, no con una persona. Puedo contarte sobre su trayectoria, ayudarte a dejar tus datos de contacto, o analizar un CSV de ejemplo. ¿Qué te gustaría hacer?"
+      });
+    }
+  }
+  bubble.addEventListener("click", openWindow);
+  document.getElementById("agent-close").addEventListener("click", function () { win.classList.remove("open"); });
+})();
+</script>
